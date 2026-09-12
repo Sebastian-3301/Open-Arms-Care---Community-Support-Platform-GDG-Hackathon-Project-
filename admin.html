@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Arms — Admin</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#FAF6EF;color:#1E2A28}
+main{max-width:1180px;margin:0 auto;padding:32px 20px}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:22px;margin-bottom:20px}
+h1,h2{margin-top:0} input,select,button{padding:10px 12px;border:1px solid #ccc;border-radius:7px;font:inherit}
+button{cursor:pointer;background:#1E2A28;color:#fff} button.secondary{background:#fff;color:#1E2A28}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.hidden{display:none}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{background:#F2E9D8;padding:16px;border-radius:10px}.stat b{display:block;font-size:1.5rem}
+.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:9px;border-bottom:1px solid #eee;vertical-align:top}
+#error{color:#9A342E;margin-top:10px}.muted{color:#64706c;font-size:.9rem}
+</style>
+</head>
+<body>
+<main>
+<div id="login" class="card">
+<h1>Open Arms Admin</h1>
+<p class="muted">Sign in to view submissions and manage statuses</p>
+<form id="loginForm">
+<div class="row"><input id="username" autocomplete="username" value="admin" placeholder="Username" required>
+<input id="password" type="password" autocomplete="current-password" placeholder="Password" required>
+<button>Sign in</button></div>
+<div id="error"></div>
+</form>
+</div>
+
+<div id="dashboard" class="hidden">
+<div class="row" style="justify-content:space-between">
+<h1>Dashboard</h1><button id="logout" class="secondary">Sign out</button>
+</div>
+<div id="stats" class="stats card"></div>
+<div class="card">
+<div class="row"><h2 style="margin:0">Records</h2>
+<select id="table"></select><input id="limit" type="number" min="1" max="250" value="100"><button id="refresh">Refresh</button></div>
+<div class="table-wrap" style="margin-top:15px"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+</div>
+</div>
+</main>
+<script>
+const tables=[
+'individual_registrations','organisation_registrations','orphanage_registrations',
+'money_donation_intents','goods_donation_intents','contact_messages','document_uploads'
+];
+const tableSelect=document.querySelector('#table');
+tables.forEach(t=>tableSelect.add(new Option(t,t)));
+tableSelect.value='individual_registrations';
+
+async function api(url, options={}) {
+  const r=await fetch(url,{credentials:'same-origin',...options});
+  let data={}; try{data=await r.json()}catch{}
+  if(!r.ok||!data.ok) throw new Error(data.error||'Request failed');
+  return data;
+}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+async function loadSummary(){
+  const d=await api('index.php?api=admin/summary');
+  document.querySelector('#stats').innerHTML=Object.entries(d.tables).map(([k,v])=>`<div class="stat"><b>${v}</b>${esc(k)}</div>`).join('');
+}
+async function loadRecords(){
+  const table=tableSelect.value, limit=Math.min(250,Math.max(1,Number(document.querySelector('#limit').value)||100));
+  const d=await api('api/admin/records?table='+encodeURIComponent(table)+'&limit='+limit);
+  const rows=d.records;
+  const cols=[...new Set(rows.flatMap(r=>Object.keys(r)))];
+  document.querySelector('#thead').innerHTML=cols.length?'<tr>'+cols.map(c=>`<th>${esc(c)}</th>`).join('')+'<th>Action</th></tr>':'';
+  document.querySelector('#tbody').innerHTML=rows.map(r=>'<tr>'+cols.map(c=>`<td>${c==='categories'?esc(r[c]):esc(r[c])}</td>`).join('')+
+    `<td>${r.status?`<select data-id="${r.id}" data-table="${esc(table)}" class="status"><option ${r.status==='new'?'selected':''}>new</option><option ${r.status==='reviewed'?'selected':''}>reviewed</option><option ${r.status==='archived'?'selected':''}>archived</option></select>`:''}
+    ${table==='document_uploads'?`<button class="download" data-id="${r.id}">Download</button>`:''}</td></tr>`).join('');
+  document.querySelectorAll('.status').forEach(s=>s.addEventListener('change',async()=>{
+    try{await api('index.php?api=admin/records',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({table:s.dataset.table,id:Number(s.dataset.id),status:s.value})});await loadSummary()}catch(e){alert(e.message);loadRecords()}
+  }));
+  document.querySelectorAll('.download').forEach(b=>b.addEventListener('click',()=>{window.location.href='index.php?api=admin/documents/'+b.dataset.id}));
+}
+async function showDashboard(){
+  document.querySelector('#login').classList.add('hidden');
+  document.querySelector('#dashboard').classList.remove('hidden');
+  await loadSummary(); await loadRecords();
+}
+document.querySelector('#loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();document.querySelector('#error').textContent='';
+  try{await api('index.php?api=admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:username.value,password:password.value})});await showDashboard()}
+  catch(err){document.querySelector('#error').textContent=err.message}
+});
+document.querySelector('#logout').onclick=async()=>{await api('index.php?api=admin/logout',{method:'POST'});location.reload()};
+document.querySelector('#refresh').onclick=()=>Promise.all([loadSummary(),loadRecords()]);
+tableSelect.onchange=loadRecords;
+(async()=>{try{await loadSummary();await showDashboard()}catch{document.querySelector('#dashboard').classList.add('hidden')}})();
+</script>
+</body>
+</html>

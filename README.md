@@ -30,3 +30,4 @@ To launch a public website, these integrations should be added with accounts and
 - **Payments:** Razorpay or Stripe publishable/secret keys plus a webhook signing secret. Use this before taking live donations; the current site stores a donation intention only and never accepts card or UPI details.
 - **Email:** a transactional provider such as Resend, Postmark, or an SMTP account and a verified sending domain for confirmations and staff alerts.
 - **Production hosting/database:** a public host/domain plus a managed database (for example PostgreSQL via Supabase, Neon, or Railway) and protected object storage for documents. Do not expose the local SQLite database or `data/uploads/` folder to the internet.
+.
